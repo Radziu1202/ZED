@@ -1,0 +1,342 @@
+---
+title: "przyczyny stopniowego karłowacenia śledzi oceanicznych wyławianych w Europie"
+author: "Radosław Burdziński"
+date: "2022-11-15"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    fig_caption: yes
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE, cache=TRUE)
+```
+
+# Executive summary
+
+Cel analizy to znalezienie przyczyny stopniowego karłowacenia śledzi oceanicznych wyławianych w Europie. Pomiary zawierają obserwacje z ostatnich 60 lat. Pomiary opisano przy pomocy 16 atrybutów:
+
+* **length** : długość złowionego śledzia [cm],
+* **cfin1**: dostępność planktonu [zagęszczenie Calanus finmarchicus gat. 1],
+* **cfin2**: dostępność planktonu [zagęszczenie Calanus finmarchicus gat. 2],
+* **chel1**: dostępność planktonu [zagęszczenie Calanus helgolandicus gat. 1],
+* **chel2**: dostępność planktonu [zagęszczenie Calanus helgolandicus gat. 2],
+* **lcop1**: dostępność planktonu [zagęszczenie widłonogów gat. 1],
+* **lcop2**: dostępność planktonu [zagęszczenie widłonogów gat. 2],
+* **fbar**: natężenie połowów w regionie [ułamek pozostawionego narybku],
+* **recr**: roczny narybek [liczba śledzi],
+* **cumf**: łączne roczne natężenie połowów w regionie [ułamek pozostawionego narybku],
+* **totaln**: łączna liczba ryb złowionych w ramach połowu [liczba śledzi],
+* **sst**: temperatura przy powierzchni wody [°C],
+* **sal**: poziom zasolenia wody [Knudsen ppt],
+* **xmonth**: miesiąc połowu [numer miesiąca],
+* **nao**: oscylacja północnoatlantycka [mb]
+
+
+# Wykorzystane biblioteki
+```{r libraries}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(caret)
+library(grid)
+library(gridExtra)
+library(tibble)
+library(gganimate)
+library(gifski)
+```
+# Wczytywanie danych z pliku 
+  
+
+```{r,  load data ,cache=TRUE}
+    initial <- read.csv("sledzie.csv", nrows=100)
+    classes <- sapply(initial, class)
+    sledzie <- read.csv("sledzie.csv",
+                     colClasses = classes)
+```
+ 
+## Wstępne przetwarzanie danych
+
+Brakujące wartości w zbiorze zastąpione są znakiem "?". Rekordy posiadające takie wartości zostały usunięte z ze zbioru danych. Rekordy nie posiadają atrbutu oznaczającego rok w którym dokonano obserwacji, jednak na podstawie dostarczonych danych utworzono nową kolumnę **Year** zawierającą tę informację. W tym celu wykorzystano atrybut **recr** - roczny narybek. Dodatkowo usunięto ze zbioru danych kolumnę oznaczającą index danej obserwacji.
+
+```{r initial_data_processing}
+  sledzie <-  data.frame(lapply(sledzie,as.numeric))
+  sledzie <-  sledzie[complete.cases(sledzie),]
+  sledzie <- sledzie[,-1]
+
+  years <-  sledzie %>% distinct(recr2=as.factor(recr)) %>% mutate(year=seq(1, length(recr2), 1))
+  sledzieWithYear <- merge(sledzie, years, by.x = "recr", by.y = "recr2")
+``` 
+ 
+  
+# Sekcja podsumowującą rozmiar zbioru i podstawowe statystyki.
+
+Zbiór danych po wstępnym przetwarzaniu składa sie z : `r nrow(sledzie)` rekordów opisanych przy pomocy `r ncol(sledzie)` atrybutów:
+
+
+## Średnie wartości atrybutów
+
+```{r, summary ,echo=FALSE}
+summary <- sledzie %>% summarize(
+                length = mean(length),
+                cfin1 = mean(cfin1),
+                cfin2 = mean(cfin2),
+                chel1 = mean(chel1),
+                chel2 = mean(chel2),
+                lcop1 = mean(lcop1),
+                lcop2 = mean(lcop2),
+                fbar = mean(fbar),
+                 recr = mean(recr),
+                 cumf = mean(cumf),
+                 totaln = mean(totaln),
+                 sst = mean(sst),
+                 sal = mean(sal),
+                      )
+
+kable(summary)
+```
+
+
+## Analiza wartości atrybutów
+
+```{r}
+
+year_mean <- sledzieWithYear %>% group_by(year) %>% summarise_at(vars(length), list(mean, sd))
+  ggplot(year_mean, aes(x=year, y=fn1)) +
+    geom_smooth() +
+    geom_point()  +
+    labs(title="Długość śledzia w zależności od roku",x="Rok",y="Długość śledzia [cm]")
+  
+  
+```
+
+Powyższy wykres przedstawia zagregowane, poprzez średnią, dane dotyczące długości śledzia w zależności od roku obliczonego na podstawie atrybutu **recr**. Możemy z niego odczytać, iż  w ostatnich latach, nastąpił spadek średniej długości śledzia. Jednak warto odnotować niewielki wzrost na końcu wykresu. 
+
+### Rozkłady wartości poszczególnych atrybutów
+
+```{r, echo =FALSE}
+
+lengthPlot <- ggplot(sledzie, aes(x=sledzie$length)) + geom_histogram() + labs(title="length", x="value",y = "value distribution")
+cfin1Plot <- ggplot(sledzie, aes(x=sledzie$cfin1)) + geom_histogram() + labs(title="cfin1", x="value",y = "value distribution")
+cfin2Plot <- ggplot(sledzie, aes(x=sledzie$cfin2)) + geom_histogram() + labs(title="cfin2", x="value",y = "value distribution")
+chel1Plot <- ggplot(sledzie, aes(x=sledzie$chel1)) + geom_histogram() + labs(title="chel1", x="value",y = "value distribution")
+chel2Plot <- ggplot(sledzie, aes(x=sledzie$chel2)) + geom_histogram() + labs(title="chel2", x="value",y = "value distribution")
+lcop1Plot <- ggplot(sledzie, aes(x=sledzie$lcop1)) + geom_histogram() + labs(title="lcop1", x="value",y = "value distribution")
+lcop2Plot <- ggplot(sledzie, aes(x=sledzie$lcop2)) + geom_histogram() + labs(title="lcop2", x="value",y = "value distribution")
+fbarPlot <- ggplot(sledzie, aes(x=sledzie$fbar)) + geom_histogram() + labs(title="fbar", x="value",y = "value distribution")
+recrPlot <- ggplot(sledzie, aes(x=sledzie$recr)) + geom_histogram() + labs(title="recr", x="value",y = "value distribution")
+cumfPlot <- ggplot(sledzie, aes(x=sledzie$cumf)) + geom_histogram() + labs(title="cumf", x="value",y = "value distribution")
+sstPlot <- ggplot(sledzie, aes(x=sledzie$sst)) + geom_histogram() + labs(title="sst", x="value",y = "value distribution")
+salPlot <- ggplot(sledzie, aes(x=sledzie$sal)) + geom_histogram() + labs(title="sal", x="value",y = "value distribution")
+naoPlot <- ggplot(sledzie, aes(x=sledzie$nao)) + geom_histogram() + labs(title="nao", x="value",y = "value distribution")
+xmonthPlot <- ggplot(sledzie, aes(x=sledzie$xmonth)) + geom_histogram() + labs(title="xmonth", x="value",y = "value distribution")
+```
+
+
+```{r}
+lengthPlot
+```
+Na podstawie rozkładu wartości długości śledzia możemy stwierdzić, iż długość śledzia oscyluje pomiędzy 19, a 32  centymetra. Zdecydownie najwięcej śledzi ma długość o wartości od 24 do 26 centymetrów. Widzimy również, że rozkład długości śledzia przypomina rozkład normalny.
+
+### Rozkład wartości występowania planktonu
+
+```{r}
+grid.arrange(
+  cfin1Plot,
+  cfin2Plot,
+  chel1Plot,
+  chel2Plot,
+  lcop1Plot,
+  lcop2Plot,
+  ncol = 3,nrow=2)
+```
+
+Widzimy, że rozkłady wartości dla atrybutów opisujących zasoby planktonu są mocno asymetryczne. Charakteryzuje je duża skośność.
+
+
+### Pozostałe rozkłady wartości
+
+```{r}
+grid.arrange(
+  fbarPlot,
+  recrPlot,
+  cumfPlot,
+  sstPlot,
+  salPlot,
+  naoPlot,
+  xmonthPlot,
+  ncol = 3,nrow=3)
+```
+
+Jeśli chodzi o pozostałe atrybuty, warto odnotować, iż:
+
+* Największy połów możemy zaobserwować między czerwcem a październikiem.
+* Skrajne wartości poziomu zasolenia wód stanowią mały odsetek wszystkich wartości.
+* Rozkład wartości natężenia połowów w regionie przypomina rozkład gamma.
+
+
+# Korelacja
+
+```{r}
+sledzieT <- complete.cases(sledzie)
+sledzie <- sledzie[sledzieT,]
+korelacja <- cor(
+  x = sledzie, use="pairwise.complete.obs")
+korelacja_df = data.frame(korelacja) %>% rownames_to_column() %>% pivot_longer(-rowname, names_to="colname")
+ggplot(korelacja_df, aes(colname, rowname, fill=value)) + 
+  geom_tile() +
+  geom_text(aes(label = format(round(value, 2), nsmall = 2)), color = "black", size = 3) +
+  scale_fill_gradient2() + 
+  theme(axis.text.x=element_text(angle = 90, hjust = 0))
+```
+
+Na podstawie macierzy korelacji, możemy stwierdzić iż:
+
+* między atrybutem opisującym długość śledzia a atrybutem opisującym temperaturę wody przy powierzchni występuje niewielka korelacja ujemna.
+* Możemy także zaobserwować podobną sytuację między temperaturą wody przy powierzchni a dostępnością planktonu.
+* dostępność różnego rodzaju planktonu koreluje ze sobą dodatnio.
+* oczywista wydaje się zależności całkowitej liczby złowionych śledzi z natężeniem połowów w regionie czy też całkowitym rocznym natężeniem połowów.
+* ujemna korelacja występuje między niektórymi rodzajami planktonu a oscylacją północnoatlantycką.
+
+
+# Interaktywny wykres rozkładu długości śledzi.
+
+Poniższy wykres pokazuje jak zmieniała się rozkład wartości dla atrybutu **length** w kolejnych latach
+
+```{r}
+p1 <- ggplot(sledzieWithYear, aes(x=sledzieWithYear$length)) +
+             geom_histogram() +
+             labs(title = 'Rozkład wartości długości śledzia w zależności od roku: {frame_time}', x = 'value', y = 'value distribution') +
+             transition_time(as.integer(year)) 
+
+animate(p1)
+anim_save('lenght_value_distribution.gif')
+```
+
+
+# Regresor
+
+Opis procesu tworzenia regresora, którego zadaniem jest przewidywanie długości śledzia. Wykorzystano do tego metodę regresji liniowej.
+
+
+## Podział zbioru i przygotowanie do trenowania modelu
+
+```{r}
+set.seed(23) 
+reggresion_df <- sledzie
+inTraining  <- createDataPartition( y = reggresion_df$length, p=0.7, list=F)
+training <- reggresion_df[ inTraining,]
+testing  <- reggresion_df[-inTraining,]
+```
+
+## Uczenie modelu
+```{r}
+model <- train(
+    length ~ .,
+    data=training,
+    trControl = trainControl(method="cv",
+               number=5,
+               allowParallel = TRUE,
+               verboseIter = FALSE),
+   
+    method="lm"
+  )
+```
+
+## Predykcja
+
+```{r}
+predictions <- predict(model, select(testing, -c(length)))
+
+x <- select(testing, -c(length))
+  results <- testing %>%
+    select(length, sst) %>%
+    rename(y_correct = length)
+  results$y_predicted <- predictions
+  
+  
+  colors <- c("przewidywane" = "blue", "faktyczne" = "red")
+  ggplot(results, aes( x = sst)) +
+    geom_smooth(aes(y = y_correct,color="faktyczne"),method=lm )+
+    geom_smooth(aes(y = y_predicted,color="przewidywane"),method=lm) +
+    labs(title = paste("model", "lm"),
+         x="temperatura przy powierzchni", y="Przewidziana długość [cm]")+
+      scale_color_manual(values = colors)
+
+```
+
+trafność  predykcji sprawdzono wykorzystując miary RMSE oraz R^2: 
+
+```{r}
+  testLength <- select(testing, length)
+  testMean <- mean(testLength$length)
+  difference <- (testLength - predictions)
+  
+  rmse <- sqrt(mean(difference$length**2))
+  rSqrd<- 1 -  sum(difference**2) / sum((testLength$length - testMean)**2)
+  rmse
+  rSqrd
+  
+  
+```
+
+
+# Analiza najważniejszych atrybutów
+
+```{r}
+atribbutesImportance <- varImp(model, scale=FALSE)
+
+importancePlot<- ggplot(atribbutesImportance) +
+    labs(title="model regresji liniowej", x="attribute", y="importance ")
+importancePlot
+```
+
+Na podstawie wykresu jesteśmy w stanie stwierdzić, iż najważniejszymi atrybutami są fbar,cumf,sst
+
+
+```{r}
+
+attributesMean <- sledzieWithYear %>%
+                  select(c(c("sst", "fbar", "cumf", "length"), "year")) %>%group_by(year) %>% summarise_all(mean)
+
+
+ggplot(attributesMean,  aes(x=sst, y=length)) +
+    geom_smooth(method='lm') +
+    labs(title="długość śledzia a temperatura przy powierzchni",x = "temperatura przy powierzchni",y = "Długość śledzia[cm]")
+
+```
+
+Po dokładniejszej analizie atrybutu **sst** widzimy, że wraz ze zwiększaniem się temperatury wody przy powierzchni spada długość śledzia.
+
+```{r}
+ggplot(attributesMean,  aes(x=fbar, y=length)) +
+    geom_smooth(method='lm') +
+    labs(title="długość śledzia a natężenie połowów w regionie",
+         x = "natężenie połowów w regionie[odsetek pozostawionego narybku]",
+         y = "Długość śledzia [cm]")
+```
+
+
+```{r}
+ggplot(attributesMean,  aes(x=cumf, y=length)) +
+    geom_smooth(method='lm') +
+    labs(title=paste("długość śledzia a roczne natężenie połowów w regionie "),
+         x = "roczne natężenie połowów w regionie[odsetek pozostawionego narybku]",
+         y = "Długość śledzia [cm]")
+```
+
+W przypadku atrybutów **fbar** i **cumf** analiza wydaje się dosyć oczywista. Im większy odsetek pozostawionego narybku tym większa wartość długości śledzia.
+
+# Podsumowanie
+
+* Nie ma jednego konkretnego atrybutu, od którego zależy długość śledzia
+* Większość atrybutów nie jest ze sobą skorelowanych - ciężko określić zależność między nimi
+* Największa korelacja zachodzi między dostępnością niektórych rodzajów planktonu - można na tej podstawie stwierdzić, iż dogodne warunki dla jednego rodzaju są także odpowiednie dla drugiego.
+* Innym przykładem korelacji wśród rozpatrywanych atrybutów jest natężenie połowów a całkowita liczba złowionych śledzi - uzasadnienie jest tutaj niepotrzebne
+*Najważniejszymi atrybutami branymi pod uwagę przy przewidywaniu długości śledzia są:
+  + **sst**
+  + **cumf**
+  + **fbar**
+ 
